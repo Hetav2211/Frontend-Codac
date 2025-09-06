@@ -1,0 +1,209 @@
+/* Base styles */
+body {
+  margin: 0;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  background-color: #121212; /* Dark background */
+  color: #ffffff; /* White text */
+}
+
+input, select, textarea, button {
+  font-family: inherit;
+}
+
+/* Join Room Page */
+.join-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  background-color: #121212;
+}
+
+.join-form {
+  background-color: #1e1e1e;
+  padding: 2rem;
+  border-radius: 12px;
+  box-shadow: 0 0 15px rgb(57, 53, 168); 
+  width: 300px;
+  text-align: center;
+}
+
+.join-form h1 {
+  color: rgb(57, 53, 168);
+  margin-bottom: 1rem;
+}
+
+.join-form input {
+  width: 100%;
+  padding: 0.6rem;
+  margin-bottom: 1rem;
+  background-color: #2c2c2c;
+  border: none;
+  border-radius: 6px;
+  color: white;
+}
+
+.join-form button {
+  background-color: rgb(57, 53, 168);
+  color: #121212;
+  border: none;
+  padding: 0.6rem 1rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: 0.3s;
+  width: 100%;
+  margin-bottom: 0.5rem;
+}
+
+.join-form button:hover {
+  background-color: rgb(57, 53, 168);
+}
+
+/* Editor Page */
+.editor-container {
+  display: flex;
+  height: 100vh;
+}
+
+.sidebar {
+  width: 250px;
+  background-color: #1e1e1e;
+  padding: 1rem;
+  border-right: 1px solid #333;
+}
+
+.room-info {
+  margin-bottom: 1rem;
+}
+
+.room-info h2 {
+  font-size: 1rem;
+  color: rgb(57, 53, 168);
+}
+
+.copy-button {
+  background-color: transparent;
+  color: rgb(57, 53, 168);
+  border: 1px solid rgb(57, 53, 168);
+  padding: 0.3rem 0.5rem;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-top: 0.5rem;
+}
+
+.copy-button:hover {
+  background-color: blue;
+  color: #121212;
+}
+
+.language-selector {
+  width: 100%;
+  padding: 0.4rem;
+  background-color: #2c2c2c;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  margin-top: 1rem;
+}
+
+.leave-button {
+  margin-top: 1rem;
+  width: 100%;
+  background-color: #ff4c4c;
+  color: white;
+  border: none;
+  padding: 0.5rem;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.leave-button:hover {
+  background-color: #e63e3e;
+}
+
+.typing-indicator {
+  font-size: 0.85rem;
+  color: #aaa;
+  margin-top: 0.5rem;
+}
+
+/* Editor Wrapper */
+.editor-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 1rem;
+  background-color: #121212;
+}
+
+.user-input, .output-console {
+  margin-top: 1rem;
+  padding: 0.75rem;
+  border-radius: 6px;
+  background-color: #1e1e1e;
+  color: white;
+  border: 1px solid #333;
+  resize: vertical;
+  min-height: 100px;
+}
+
+.run-btn {
+  margin-top: 1rem;
+  color: white;
+  border: 1px solid blue;
+  padding: 0.7rem;
+  font-weight: bold;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.run-btn:hover {
+  background-color: blue;
+}
+
+.download-button {
+  background-color: #4CAF50;
+  color: white;
+  border: none;
+  padding: 10px 15px;
+  margin: 10px 0;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.3s;
+  width: 100%;
+}
+
+.download-button:hover {
+  background-color: #45a049;
+}
+
+/* Dark mode styles */
+.dark {
+  --bg-color: #1a202c;
+  --sidebar-bg: #1f2937;
+  --text-color: #f3f4f6;
+  --border-color: #374151;
+  --input-bg: #1f2937;
+  --button-bg: #374151;
+  --button-text: #f3f4f6;
+  --output-bg: #111827;
+}
+
+/* Light mode styles */
+:root {
+  --bg-color: #f7fafc;
+  --sidebar-bg: #f3f4f6;
+  --text-color: #111827;
+  --border-color: #e5e7eb;
+  --input-bg: #ffffff;
+  --button-bg: #e5e7eb;
+  --button-text: #111827;
+  --output-bg: #f3f4f6;
+}
+
+/* Toast container dark mode */
+.Toastify__toast-container--dark {
+  background: #1f2937;
+  color: #f3f4f6;
+}
