@@ -7,15 +7,23 @@ import { toast, ToastContainer } from "react-toastify";
 import { v4 as uuid } from "uuid";
 import { saveAs } from "file-saver";
 import { FiCopy, FiSun, FiMoon, FiTrash2 } from "react-icons/fi";
-import { SiJavascript, SiPython, SiCplusplus, SiC, SiPhp, SiGo, SiRuby, SiRust } from "react-icons/si";
-import { FaJava } from 'react-icons/fa';
+import {
+  SiJavascript,
+  SiPython,
+  SiCplusplus,
+  SiC,
+  SiPhp,
+  SiGo,
+  SiRuby,
+  SiRust,
+} from "react-icons/si";
+import { FaJava } from "react-icons/fa";
 import EmojiPicker from "emoji-picker-react";
 import { ChatBox } from "./components/ChatBox";
 
-const socket =
-  import.meta.env.MODE === "development"
-    ? io(import.meta.env.VITE_BACKEND_URL)
-    : io("https://codec-backend.onrender.com");
+const socket = io(
+  import.meta.env.VITE_BACKEND_URL || "https://backend-codac.onrender.com"
+);
 
 // Default code templates for each language
 const DEFAULT_CODE = {
@@ -1054,7 +1062,7 @@ const Editor1 = () => {
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "flex-start",
-                    gap: "10px"
+                    gap: "10px",
                   }}
                 >
                   {languageIcons[language]}
@@ -1072,7 +1080,7 @@ const Editor1 = () => {
                       borderRadius: "8px",
                       boxShadow: "0 4px 16px rgba(0,0,0,0.08)",
                       zIndex: 100,
-                      border: darkMode ? "1px solid #222" : "1px solid #eee"
+                      border: darkMode ? "1px solid #222" : "1px solid #eee",
                     }}
                   >
                     {Object.keys(languageIcons).map((lang) => (
@@ -1080,9 +1088,14 @@ const Editor1 = () => {
                         key={lang}
                         onClick={() => {
                           setLanguage(lang);
-                          setCode(DEFAULT_CODE[lang] || DEFAULT_CODE.javascript);
+                          setCode(
+                            DEFAULT_CODE[lang] || DEFAULT_CODE.javascript
+                          );
                           setShowLangDropdown(false);
-                          socket.emit("languageChange", { roomId, language: lang });
+                          socket.emit("languageChange", {
+                            roomId,
+                            language: lang,
+                          });
                           toast.success("Language changed!");
                         }}
                         style={{
@@ -1093,9 +1106,14 @@ const Editor1 = () => {
                           cursor: "pointer",
                           fontSize: "13px",
                           color: darkMode ? "#f3f4f6" : "#111827",
-                          background: language === lang ? (darkMode ? "#1e293b" : "#f3f4f6") : "inherit"
+                          background:
+                            language === lang
+                              ? darkMode
+                                ? "#1e293b"
+                                : "#f3f4f6"
+                              : "inherit",
                         }}
-                        onMouseDown={e => e.preventDefault()}
+                        onMouseDown={(e) => e.preventDefault()}
                       >
                         {languageIcons[lang]}
                         {languageNames[lang]}
