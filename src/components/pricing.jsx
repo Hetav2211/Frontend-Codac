@@ -42,8 +42,11 @@ const slideUpVariants = {
   },
 };
 
-const stripePromise = loadStripe(
-  import.meta.env.VITE_STRIPE_PUBLIC_KEY
+const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLIC_KEY).catch(
+  (error) => {
+    console.error("Failed to load Stripe:", error);
+    return null;
+  }
 );
 
 const Pricing = () => {
@@ -54,6 +57,26 @@ const Pricing = () => {
   const [couponCodes, setCouponCodes] = useState({}); // { planIndex: code }
   const [discountedPrices, setDiscountedPrices] = useState({}); // { planIndex: price }
   const navigate = useNavigate();
+
+  // Debug: Check if environment variables are loaded
+  useEffect(() => {
+    if (!import.meta.env.VITE_STRIPE_PUBLIC_KEY) {
+      console.error(
+        "VITE_STRIPE_PUBLIC_KEY is not defined in environment variables"
+      );
+      toast.error("Stripe configuration error. Please contact support.");
+    } else {
+      console.log(
+        "Stripe public key loaded:",
+        import.meta.env.VITE_STRIPE_PUBLIC_KEY.substring(0, 20) + "..."
+      );
+    }
+
+    if (!import.meta.env.VITE_BACKEND_URL) {
+      console.error("VITE_BACKEND_URL is not defined in environment variables");
+      toast.error("Backend configuration error. Please contact support.");
+    }
+  }, []);
 
   useEffect(() => {
     if (inView) {
@@ -71,10 +94,13 @@ const Pricing = () => {
   }, []);
 
   const handleCheckout = async (plan) => {
+    console.log("Starting checkout for plan:", plan);
+
     // Only check login for paid plans
     if (plan === "Pro" || plan === "Team") {
       const storedUser = localStorage.getItem("user");
       if (!storedUser) {
+        console.log("User not logged in, redirecting to login");
         navigate("/login", { replace: true });
         return;
       }
@@ -86,23 +112,41 @@ const Pricing = () => {
     if (storedUser) {
       const user = JSON.parse(storedUser);
       userId = user._id;
+      console.log("User ID:", userId);
     }
 
     if (plan === "Free") {
+      console.log("Processing free plan");
       toast.success("Free plan selected! No payment required.");
       if (userId) {
-        // Update plan in DB
-        await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/user/plan`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ userId, plan }),
-        });
-        // Update local user
-        const user = JSON.parse(storedUser);
-        user.plan = plan;
-        localStorage.setItem("user", JSON.stringify(user));
-        window.dispatchEvent(new Event("storage"));
-        window.dispatchEvent(new Event("userPlanUpdated"));
+        try {
+          // Update plan in DB
+          const response = await fetch(
+            `${import.meta.env.VITE_BACKEND_URL}/api/user/plan`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ userId, plan }),
+            }
+          );
+
+          if (!response.ok) {
+            throw new Error(`Failed to update plan: ${response.statusText}`);
+          }
+
+          // Update local user
+          const user = JSON.parse(storedUser);
+          user.plan = plan;
+          localStorage.setItem("user", JSON.stringify(user));
+          window.dispatchEvent(new Event("storage"));
+          window.dispatchEvent(new Event("userPlanUpdated"));
+          console.log("Free plan updated successfully");
+        } catch (error) {
+          console.error("Error updating free plan:", error);
+          toast.error("Failed to update plan. Please try again.");
+          setSelectedPlan(null);
+          return;
+        }
       }
       return;
     }
@@ -112,41 +156,70 @@ const Pricing = () => {
     const planIndex = ["Free", "Pro", "Team"].indexOf(plan);
     if (discountedPrices[planIndex] !== undefined) {
       priceToPay = discountedPrices[planIndex] * 100; // Convert rupees to paise
+      console.log("Using discounted price:", priceToPay);
+    } else {
+      const originalPrices = { Pro: 799, Team: 2499 };
+      priceToPay = originalPrices[plan] * 100;
+      console.log("Using original price:", priceToPay);
     }
 
     try {
-      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/create-checkout-session`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plan, price: priceToPay }),
-      });
+      console.log(
+        "Creating checkout session for plan:",
+        plan,
+        "price:",
+        priceToPay
+      );
+
+      const res = await fetch(
+        `${import.meta.env.VITE_BACKEND_URL}/create-checkout-session`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ plan, price: priceToPay }),
+        }
+      );
+
+      console.log("Checkout session response status:", res.status);
 
       if (!res.ok) {
-        throw new Error("Failed to create checkout session");
+        const errorData = await res
+          .json()
+          .catch(() => ({ message: "Unknown error" }));
+        console.error("Checkout session error:", errorData);
+        throw new Error(
+          errorData.message || `HTTP ${res.status}: ${res.statusText}`
+        );
       }
 
       const data = await res.json();
+      console.log("Checkout session data received:", data);
+
+      if (!data.sessionId) {
+        throw new Error("No session ID received from server");
+      }
+
+      console.log("Loading Stripe instance...");
       const stripe = await stripePromise;
 
+      if (!stripe) {
+        throw new Error("Stripe failed to load. Please refresh and try again.");
+      }
+
+      console.log("Stripe loaded successfully, redirecting to checkout...");
       // Store the selected plan in sessionStorage for use after redirect
       sessionStorage.setItem("lastSelectedPlan", plan);
-      // Update plan in DB after payment success (should be handled on backend webhook ideally)
-      if (userId) {
-        await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/user/plan`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ userId, plan }),
-        });
-      }
 
       const result = await stripe.redirectToCheckout({
         sessionId: data.sessionId,
       });
 
       if (result.error) {
-        toast.error(result.error.message);
+        console.error("Stripe redirect error:", result.error);
+        throw new Error(result.error.message);
       }
     } catch (error) {
+      console.error("Payment error:", error);
       toast.error("Payment failed: " + error.message);
       setSelectedPlan(null);
     }
@@ -178,7 +251,7 @@ const Pricing = () => {
           variants={containerVariants}
           className="grid md:grid-cols-3 gap-8 items-end"
         >
-          {[ 
+          {[
             {
               plan: "Free",
               price: 0,
@@ -231,155 +304,170 @@ const Pricing = () => {
               displayPrice = discountedPrices[i];
             }
             return (
-            <motion.div
-              key={i}
-              variants={slideUpVariants}
-              custom={tier.delay}
-              onHoverStart={() => setHoveredPlan(i)}
-              onHoverEnd={() => setHoveredPlan(null)}
-              className={`relative rounded-2xl overflow-hidden shadow-lg transition-all ${
-                tier.popular
-                  ? "transform md:scale-[1.03] ring-4 ring-blue-400"
-                  : ""
-              }`}
-            >
-              {tier.popular && (
-                <motion.div
-                  initial={{ opacity: 0, y: -20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.5 }}
-                  className="absolute top-0 left-0 right-0 bg-blue-500 text-white text-center py-1 text-xs font-bold uppercase tracking-wide"
-                >
-                  Most Popular
-                </motion.div>
-              )}
-
               <motion.div
-                animate={{
-                  scale: hoveredPlan === i ? 1.02 : 1,
-                }}
-                className={`bg-gradient-to-br ${tier.color} p-1`}
+                key={i}
+                variants={slideUpVariants}
+                custom={tier.delay}
+                onHoverStart={() => setHoveredPlan(i)}
+                onHoverEnd={() => setHoveredPlan(null)}
+                className={`relative rounded-2xl overflow-hidden shadow-lg transition-all ${
+                  tier.popular
+                    ? "transform md:scale-[1.03] ring-4 ring-blue-400"
+                    : ""
+                }`}
               >
-                <div
-                  className={`bg-white dark:bg-gray-800 p-8 rounded-xl text-gray-900 dark:text-white"`}
-                >
-                  <h3 className="text-2xl font-semibold mb-2 text-black dark:text-white">{tier.plan}</h3>
-
-                  <div className="mb-6 text-black dark:text-white">
-                    <p className="text-4xl font-bold mb-1">
-                      ₹{displayPrice.toLocaleString("en-IN")}
-                      <span className="text-lg font-normal"> /mo</span>
-                    </p>
-                    {tier.price > 0 && (
-                      <p className="text-sm text-gray-500 dark:text-gray-400">
-                        GST Included
-                      </p>
-                    )}
-                    {/* Coupon code input for paid plans */}
-                    {tier.price > 0 && (
-                      <div className="mt-2">
-                        <input
-                          type="text"
-                          placeholder="Enter coupon code"
-                          value={couponCodes[i] || ""}
-                          onChange={e => {
-                            const code = e.target.value.trim().toUpperCase();
-                            setCouponCodes(prev => ({ ...prev, [i]: code }));
-                            let discount = null;
-                            let message = "";
-                            if (code === "SAVE10") {
-                              discount = 0.9;
-                              message = "Coupon applied! 10% discount.";
-                            } else if (code === "TEAM20" && tier.plan === "Team") {
-                              discount = 0.8;
-                              message = "Coupon applied! 20% off Team plan.";
-                            } else if (code === "TEAM20" && tier.plan !== "Team") {
-                              discount = null;
-                              message = "TEAM20 is only valid for Team plan.";
-                            } 
-
-                            if (discount) {
-                              setDiscountedPrices(prev => ({ ...prev, [i]: Math.round(tier.price * discount) }));
-                              toast.success(message);
-                            } else {
-                              setDiscountedPrices(prev => {
-                                const copy = { ...prev };
-                                delete copy[i];
-                                return copy;
-                              });
-                              if (message) toast.error(message);
-                            }
-                          }}
-                          className="border text-black rounded px-2 py-1 text-sm w-36 mr-2"
-                        />
-                        <span>Enter coupon code for {tier.plan} discount!</span>
-                      </div>
-                      
-                    )}
-                  </div>
-
-                  <p className="text-gray-600 dark:text-gray-300 mb-6">
-                    {tier.description}
-                  </p>
-
-                  <ul className="space-y-3 text-gray-700 dark:text-gray-300 mb-8">
-                    {tier.features.map((f, j) => (
-                      <motion.li
-                        key={j}
-                        whileHover={{ x: 5 }}
-                        className="flex items-start gap-2"
-                      >
-                        <svg
-                          className="w-5 h-5 text-green-500 mt-0.5"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth="2"
-                            d="M5 13l4 4L19 7"
-                          ></path>
-                        </svg>
-                        <span>{f}</span>
-                      </motion.li>
-                    ))}
-                  </ul>
-
-                  <motion.button
-                    onClick={() => handleCheckout(tier.plan)}
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    disabled={selectedPlan === tier.plan}
-                    className={`w-full py-3 rounded-lg font-medium transition ${
-                      tier.popular
-                        ? "bg-blue-600 hover:bg-blue-700 text-white"
-                        : "bg-gray-200 hover:bg-gray-300 text-gray-800 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-white"
-                    }`}
+                {tier.popular && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.5 }}
+                    className="absolute top-0 left-0 right-0 bg-blue-500 text-white text-center py-1 text-xs font-bold uppercase tracking-wide"
                   >
-                    {selectedPlan === tier.plan ? (
-                      <motion.span
-                        animate={{ rotate: 360 }}
-                        transition={{
-                          duration: 1,
-                          repeat: Infinity,
-                          ease: "linear",
-                        }}
-                        className="inline-block"
-                      >
-                        ⏳
-                      </motion.span>
-                    ) : tier.price === 0 ? (
-                      "Get Started"
-                    ) : (
-                      "Subscribe Now"
-                    )}
-                  </motion.button>
-                </div>
+                    Most Popular
+                  </motion.div>
+                )}
+
+                <motion.div
+                  animate={{
+                    scale: hoveredPlan === i ? 1.02 : 1,
+                  }}
+                  className={`bg-gradient-to-br ${tier.color} p-1`}
+                >
+                  <div
+                    className={`bg-white dark:bg-gray-800 p-8 rounded-xl text-gray-900 dark:text-white"`}
+                  >
+                    <h3 className="text-2xl font-semibold mb-2 text-black dark:text-white">
+                      {tier.plan}
+                    </h3>
+
+                    <div className="mb-6 text-black dark:text-white">
+                      <p className="text-4xl font-bold mb-1">
+                        ₹{displayPrice.toLocaleString("en-IN")}
+                        <span className="text-lg font-normal"> /mo</span>
+                      </p>
+                      {tier.price > 0 && (
+                        <p className="text-sm text-gray-500 dark:text-gray-400">
+                          GST Included
+                        </p>
+                      )}
+                      {/* Coupon code input for paid plans */}
+                      {tier.price > 0 && (
+                        <div className="mt-2">
+                          <input
+                            type="text"
+                            placeholder="Enter coupon code"
+                            value={couponCodes[i] || ""}
+                            onChange={(e) => {
+                              const code = e.target.value.trim().toUpperCase();
+                              setCouponCodes((prev) => ({
+                                ...prev,
+                                [i]: code,
+                              }));
+                              let discount = null;
+                              let message = "";
+                              if (code === "SAVE10") {
+                                discount = 0.9;
+                                message = "Coupon applied! 10% discount.";
+                              } else if (
+                                code === "TEAM20" &&
+                                tier.plan === "Team"
+                              ) {
+                                discount = 0.8;
+                                message = "Coupon applied! 20% off Team plan.";
+                              } else if (
+                                code === "TEAM20" &&
+                                tier.plan !== "Team"
+                              ) {
+                                discount = null;
+                                message = "TEAM20 is only valid for Team plan.";
+                              }
+
+                              if (discount) {
+                                setDiscountedPrices((prev) => ({
+                                  ...prev,
+                                  [i]: Math.round(tier.price * discount),
+                                }));
+                                toast.success(message);
+                              } else {
+                                setDiscountedPrices((prev) => {
+                                  const copy = { ...prev };
+                                  delete copy[i];
+                                  return copy;
+                                });
+                                if (message) toast.error(message);
+                              }
+                            }}
+                            className="border text-black rounded px-2 py-1 text-sm w-36 mr-2"
+                          />
+                          <span>
+                            Enter coupon code for {tier.plan} discount!
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    <p className="text-gray-600 dark:text-gray-300 mb-6">
+                      {tier.description}
+                    </p>
+
+                    <ul className="space-y-3 text-gray-700 dark:text-gray-300 mb-8">
+                      {tier.features.map((f, j) => (
+                        <motion.li
+                          key={j}
+                          whileHover={{ x: 5 }}
+                          className="flex items-start gap-2"
+                        >
+                          <svg
+                            className="w-5 h-5 text-green-500 mt-0.5"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth="2"
+                              d="M5 13l4 4L19 7"
+                            ></path>
+                          </svg>
+                          <span>{f}</span>
+                        </motion.li>
+                      ))}
+                    </ul>
+
+                    <motion.button
+                      onClick={() => handleCheckout(tier.plan)}
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                      disabled={selectedPlan === tier.plan}
+                      className={`w-full py-3 rounded-lg font-medium transition ${
+                        tier.popular
+                          ? "bg-blue-600 hover:bg-blue-700 text-white"
+                          : "bg-gray-200 hover:bg-gray-300 text-gray-800 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-white"
+                      }`}
+                    >
+                      {selectedPlan === tier.plan ? (
+                        <motion.span
+                          animate={{ rotate: 360 }}
+                          transition={{
+                            duration: 1,
+                            repeat: Infinity,
+                            ease: "linear",
+                          }}
+                          className="inline-block"
+                        >
+                          ⏳
+                        </motion.span>
+                      ) : tier.price === 0 ? (
+                        "Get Started"
+                      ) : (
+                        "Subscribe Now"
+                      )}
+                    </motion.button>
+                  </div>
+                </motion.div>
               </motion.div>
-            </motion.div>
-          );
+            );
           })}
         </motion.div>
 
@@ -389,22 +477,23 @@ const Pricing = () => {
         >
           <p>All prices in Indian Rupees (INR). Enterprise plans available.</p>
         </motion.div>
-        <motion.div
-          variants={itemVariants}
-          className="mt-8 text-center"
-        >
+        <motion.div variants={itemVariants} className="mt-8 text-center">
           <div className="inline-block bg-gray-100 dark:bg-gray-800 rounded-full px-6 py-4">
             <p className="text-gray-700 dark:text-gray-300">
-              <span className="font-medium">Need custom solutions?</span>{' '}
+              <span className="font-medium">Need custom solutions?</span>{" "}
               <button
-                onClick={() => document.getElementById('Feedback')?.scrollIntoView({ behavior: 'smooth' })}
+                onClick={() =>
+                  document
+                    .getElementById("Feedback")
+                    ?.scrollIntoView({ behavior: "smooth" })
+                }
                 className="text-blue-600 hover:underline dark:text-blue-400 font-semibold"
               >
                 Contact our sales team
               </button>
             </p>
           </div>
-          
+
           <div className="mt-8 flex flex-wrap justify-center gap-4 text-sm text-gray-500 dark:text-gray-400">
             <span>30-day money-back guarantee</span>
             <span>•</span>
